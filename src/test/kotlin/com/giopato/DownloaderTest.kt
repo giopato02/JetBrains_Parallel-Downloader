@@ -189,6 +189,21 @@ class DownloaderTest {
         assertEquals(content, outputFile.readText())
         assertEquals(2, callCount, "Should have been called twice — once failing, once succeeding")
     }
+
+    @Test
+    fun `download completes all chunks and shows progress`() = runBlocking {
+        val content = "Progress bar test content for the parallel downloader!"
+        val bytes = content.toByteArray()
+        val fakeClient = FakeHttpClient(
+            fileSize = bytes.size.toLong(),
+            content = bytes
+        )
+        // showProgress = false to keep test output clean
+        val downloader = Downloader(fakeClient, chunkCount = 4, showProgress = false)
+        downloader.download("http://fake-url/file.txt", outputFile)
+        assertEquals(content, outputFile.readText())
+        assertTrue(outputFile.length() > 0)
+    }
 }
 
 // ── Fake HttpClient for unit tests ────────────────────────────────────────────

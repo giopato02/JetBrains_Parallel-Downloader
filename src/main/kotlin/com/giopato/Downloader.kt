@@ -10,7 +10,8 @@ import kotlinx.coroutines.delay
  */
 class Downloader(
     private val httpClient: HttpClient,
-    private val chunkCount: Int = 4
+    private val chunkCount: Int = 4,
+    private val showProgress: Boolean = true
 ) {
     /**
      * Downloads the file at [url] and saves it to [outputFile].
@@ -31,12 +32,14 @@ class Downloader(
         val ranges = calculateRanges(fileSize, chunkCount)
 
         // Step 3 — download all chunks in parallel
+        val completed = java.util.concurrent.atomic.AtomicInteger(0)
         val chunks: List<ByteArray> = coroutineScope {
             ranges.mapIndexed { index, (from, to) ->
                 async(Dispatchers.IO) {
-                    println("Downloading chunk $index: bytes $from-$to")
+                    if (showProgress) println("Starting chunk $index: bytes $from-$to")
                     val bytes = downloadChunkWithRetry(url, from, to, index)
-                    println("Chunk $index complete (${bytes.size} bytes)")
+                    val done = completed.incrementAndGet()
+                    if (showProgress) printProgress(done, chunkCount, fileSize)
                     bytes
                 }
             }.awaitAll()
@@ -77,6 +80,20 @@ class Downloader(
             }
         }
         throw lastException ?: error("Chunk $index failed after $maxRetries attempts")
+    }
+
+    /**
+     * Prints a live progress bar to the console.
+     * Example: [=========>    ] 60% (3/5 chunks) 85 bytes
+     */
+    private fun printProgress(completed: Int, total: Int, fileSize: Long) {
+        val percent = (completed * 100) / total
+        val barWidth = 30
+        val filled = (barWidth * completed) / total
+        val bar = "=".repeat(filled) + ">" + " ".repeat(barWidth - filled)
+        val approxBytes = (fileSize * completed) / total
+        print("\r[$bar] $percent% ($completed/$total chunks) ~$approxBytes bytes")
+        if (completed == total) println() // new line when done
     }
 
     /**
