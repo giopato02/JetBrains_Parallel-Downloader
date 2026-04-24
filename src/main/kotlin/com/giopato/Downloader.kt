@@ -2,6 +2,7 @@ package com.giopato
 
 import kotlinx.coroutines.*
 import java.io.File
+import kotlinx.coroutines.delay
 
 /**
  * Core downloader — splits a file into [chunkCount] equal parts,
@@ -34,7 +35,7 @@ class Downloader(
             ranges.mapIndexed { index, (from, to) ->
                 async(Dispatchers.IO) {
                     println("Downloading chunk $index: bytes $from-$to")
-                    val bytes = httpClient.downloadChunk(url, from, to)
+                    val bytes = downloadChunkWithRetry(url, from, to, index)
                     println("Chunk $index complete (${bytes.size} bytes)")
                     bytes
                 }
@@ -48,6 +49,34 @@ class Downloader(
         }
 
         println("Download complete: ${outputFile.absolutePath}")
+    }
+
+    /**
+     * Attempts to download a chunk up to [maxRetries] times.
+     * Waits [delayMs] milliseconds between attempts.
+     * Throws the last exception if all attempts fail.
+     */
+    private suspend fun downloadChunkWithRetry(
+        url: String,
+        from: Long,
+        to: Long,
+        index: Int,
+        maxRetries: Int = 3,
+        delayMs: Long = 1000L
+    ): ByteArray {
+        var lastException: Exception? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return httpClient.downloadChunk(url, from, to)
+            } catch (e: Exception) {
+                lastException = e
+                println("Chunk $index failed (attempt ${attempt + 1}/$maxRetries): ${e.message}")
+                if (attempt < maxRetries - 1) {
+                    delay(delayMs)
+                }
+            }
+        }
+        throw lastException ?: error("Chunk $index failed after $maxRetries attempts")
     }
 
     /**

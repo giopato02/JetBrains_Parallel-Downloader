@@ -166,6 +166,29 @@ class DownloaderTest {
 
         assertEquals(content, outputFile.readText())
     }
+
+    @Test
+    fun `download retries failed chunk and succeeds`() = runBlocking {
+        val content = "Retry logic test content for parallel downloader."
+        val bytes = content.toByteArray()
+
+        // Fails on first call, succeeds on second
+        var callCount = 0
+        val flakyClient = object : HttpClient {
+            override fun getFileSize(url: String) = bytes.size.toLong()
+            override fun downloadChunk(url: String, from: Long, to: Long): ByteArray {
+                callCount++
+                if (callCount == 1) throw Exception("Simulated network failure")
+                return bytes.copyOfRange(from.toInt(), to.toInt() + 1)
+            }
+        }
+
+        val downloader = Downloader(flakyClient, chunkCount = 1)
+        downloader.download("http://fake-url/file.txt", outputFile)
+
+        assertEquals(content, outputFile.readText())
+        assertEquals(2, callCount, "Should have been called twice — once failing, once succeeding")
+    }
 }
 
 // ── Fake HttpClient for unit tests ────────────────────────────────────────────

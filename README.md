@@ -89,7 +89,7 @@ Notice chunks download **out of order** — proving true parallelism.
 diff /path/to/original/file output.txt
 ```
 
-No output = files are identical ✅
+No output = files are identical
 
 ## Running Tests
 
