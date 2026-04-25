@@ -31,13 +31,13 @@ Download complete: output.bin
 
 ## Features
 
-- ✅ **Parallel downloading** — all chunks download simultaneously using Kotlin Coroutines
-- ✅ **Configurable chunk count** — specify how many chunks to split the file into
-- ✅ **Configurable chunk size** — specify chunk size in MB or KB instead of count
-- ✅ **Retry logic** — failed chunks are retried up to 3 times with a 1s delay
-- ✅ **Live progress bar** — real-time progress shown in terminal
-- ✅ **Binary file support** — works with any file type (text, images, zips, binaries)
-- ✅ **Correct assembly** — chunks always written in correct order regardless of arrival order
+- **Parallel downloading** — all chunks download simultaneously using Kotlin Coroutines
+- **Configurable chunk count** — specify how many chunks to split the file into
+- **Configurable chunk size** — specify chunk size in MB or KB instead of count
+- **Retry logic** — failed chunks are retried up to 3 times with a 1s delay
+- **Live progress bar** — real-time progress shown in terminal
+- **Binary file support** — works with any file type (text, images, zips, binaries)
+- **Correct assembly** — chunks always written in correct order regardless of arrival order
 
 ## Tech Stack
 
@@ -111,7 +111,7 @@ Download complete: /Users/giopato/output.bin
 diff /path/to/original/file output.bin
 ```
 
-No output = files are identical ✅
+No output = files are identical.
 
 ### Tested with a 10MB binary file
 
