@@ -204,6 +204,41 @@ class DownloaderTest {
         assertEquals(content, outputFile.readText())
         assertTrue(outputFile.length() > 0)
     }
+
+    @Test
+    fun `download with chunk size splits file correctly`() = runBlocking {
+        val content = "Chunk size test content — this is long enough to split into multiple chunks!"
+        val bytes = content.toByteArray()
+        val fakeClient = FakeHttpClient(
+            fileSize = bytes.size.toLong(),
+            content = bytes
+        )
+        // Use 10 byte chunk size — should create multiple chunks
+        val downloader = Downloader(
+            httpClient = fakeClient,
+            chunkSizeBytes = 10L,
+            showProgress = false
+        )
+        downloader.download("http://fake-url/file.txt", outputFile)
+        assertEquals(content, outputFile.readText())
+    }
+
+    @Test
+    fun `download handles binary content correctly`() = runBlocking {
+        // Simulate binary data (not text) — random bytes including zeros and high values
+        val binaryContent = ByteArray(256) { it.toByte() } // bytes 0x00 to 0xFF
+        val fakeClient = FakeHttpClient(
+            fileSize = binaryContent.size.toLong(),
+            content = binaryContent
+        )
+        val downloader = Downloader(fakeClient, chunkCount = 4, showProgress = false)
+        downloader.download("http://fake-url/binary.bin", outputFile)
+
+        // Verify byte-for-byte match
+        val result = outputFile.readBytes()
+        assertEquals(binaryContent.size, result.size)
+        assertContentEquals(binaryContent, result)
+    }
 }
 
 // ── Fake HttpClient for unit tests ────────────────────────────────────────────

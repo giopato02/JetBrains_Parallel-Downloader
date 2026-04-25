@@ -13,7 +13,8 @@ import kotlinx.coroutines.sync.withLock
 class Downloader(
     private val httpClient: HttpClient,
     private val chunkCount: Int = 4,
-    private val showProgress: Boolean = true
+    private val showProgress: Boolean = true,
+    private val chunkSizeBytes: Long? = null
 ) {
     private val printMutex = Mutex()
     /**
@@ -29,10 +30,16 @@ class Downloader(
         val fileSize = httpClient.getFileSize(url)
             ?: error("Server does not support range requests for: $url")
 
-        println("File size: $fileSize bytes — splitting into $chunkCount chunks")
+        val actualChunkCount = if (chunkSizeBytes != null) {
+            maxOf(1, (fileSize / chunkSizeBytes).toInt())
+        } else {
+            chunkCount
+        }
+
+        println("File size: $fileSize bytes — splitting into $actualChunkCount chunks")
 
         // Step 2 — calculate byte ranges for each chunk
-        val ranges = calculateRanges(fileSize, chunkCount)
+        val ranges = calculateRanges(fileSize, actualChunkCount)
 
         // Step 3 — download all chunks in parallel
         val completed = java.util.concurrent.atomic.AtomicInteger(0)
@@ -43,7 +50,7 @@ class Downloader(
                     val done = completed.incrementAndGet()
                     if (showProgress) {
                         printMutex.withLock {
-                            printProgress(done, chunkCount, fileSize)
+                            printProgress(done, actualChunkCount, fileSize)  // ← change here
                         }
                     }
                     bytes
@@ -119,4 +126,20 @@ class Downloader(
             from to to
         }
     }
+
+    companion object {
+        /**
+         * Creates a Downloader where chunk count is derived from a desired chunk size.
+         * Example: 10MB file with 2MB chunks = 5 chunks
+         */
+        fun withChunkSize(
+            httpClient: HttpClient,
+            chunkSizeBytes: Long,
+            showProgress: Boolean = true
+        ): Downloader {
+            // We don't know file size yet — chunk count will be calculated at download time
+            return Downloader(httpClient, chunkSizeBytes = chunkSizeBytes, showProgress = showProgress)
+        }
+    }
+
 }

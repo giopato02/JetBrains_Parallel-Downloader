@@ -51,21 +51,44 @@ class OkHttpClientAdapter : HttpClient {
  */
 fun main(args: Array<String>) {
     if (args.size < 2) {
-        println("Usage: <url> <outputFile> [chunkCount]")
-        println("Example: http://localhost:8080/file.txt output.txt 4")
+        println("Usage: <url> <outputFile> [chunkCount|chunkSize]")
+        println("Examples:")
+        println("  http://localhost:8080/file.txt output.txt 4       (4 chunks)")
+        println("  http://localhost:8080/file.txt output.txt 2MB     (2MB per chunk)")
+        println("  http://localhost:8080/file.txt output.txt 512KB   (512KB per chunk)")
         return
     }
 
     val url        = args[0]
     val outputFile = File(args[1])
-    val chunkCount = args.getOrNull(2)?.toIntOrNull() ?: 4
+    val thirdArg   = args.getOrNull(2)
 
-    println("Downloading: $url")
-    println("Output:      ${outputFile.absolutePath}")
-    println("Chunks:      $chunkCount")
-
+    // Third arg can be:
+    //   "4"     → 4 chunks
+    //   "2MB"   → 2MB per chunk
+    //   "512KB" → 512KB per chunk
     val httpClient = OkHttpClientAdapter()
-    val downloader = Downloader(httpClient, chunkCount)
+    val downloader = when {
+        thirdArg == null -> {
+            println("Chunks: 4 (default)")
+            Downloader(httpClient, chunkCount = 4)
+        }
+        thirdArg.endsWith("MB", ignoreCase = true) -> {
+            val mb = thirdArg.dropLast(2).toLongOrNull() ?: 1L
+            println("Chunk size: ${mb}MB")
+            Downloader(httpClient, chunkSizeBytes = mb * 1024 * 1024)
+        }
+        thirdArg.endsWith("KB", ignoreCase = true) -> {
+            val kb = thirdArg.dropLast(2).toLongOrNull() ?: 512L
+            println("Chunk size: ${kb}KB")
+            Downloader(httpClient, chunkSizeBytes = kb * 1024)
+        }
+        else -> {
+            val count = thirdArg.toIntOrNull() ?: 4
+            println("Chunks: $count")
+            Downloader(httpClient, chunkCount = count)
+        }
+    }
 
     runBlocking {
         downloader.download(url, outputFile)
