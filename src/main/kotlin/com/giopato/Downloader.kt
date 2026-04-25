@@ -3,6 +3,8 @@ package com.giopato
 import kotlinx.coroutines.*
 import java.io.File
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Core downloader — splits a file into [chunkCount] equal parts,
@@ -13,6 +15,7 @@ class Downloader(
     private val chunkCount: Int = 4,
     private val showProgress: Boolean = true
 ) {
+    private val printMutex = Mutex()
     /**
      * Downloads the file at [url] and saves it to [outputFile].
      * Steps:
@@ -36,10 +39,13 @@ class Downloader(
         val chunks: List<ByteArray> = coroutineScope {
             ranges.mapIndexed { index, (from, to) ->
                 async(Dispatchers.IO) {
-                    if (showProgress) println("Starting chunk $index: bytes $from-$to")
                     val bytes = downloadChunkWithRetry(url, from, to, index)
                     val done = completed.incrementAndGet()
-                    if (showProgress) printProgress(done, chunkCount, fileSize)
+                    if (showProgress) {
+                        printMutex.withLock {
+                            printProgress(done, chunkCount, fileSize)
+                        }
+                    }
                     bytes
                 }
             }.awaitAll()
