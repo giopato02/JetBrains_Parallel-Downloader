@@ -1,6 +1,6 @@
 # JetBrains Parallel Downloader
 
-A command-line file downloader written in **Kotlin** that downloads files in parallel chunks using HTTP Range requests. Built as part of the JetBrains internship application for the *Standalone Tool for Feature Usage Events Exploration* project.
+A command-line file downloader written in **Kotlin** that downloads files in parallel chunks using HTTP Range requests. Built as part of the JetBrains internship application for the *Standalone Tool for Feature Usage Events Exploration* and *Interop of Reporting SDK with Python Clients* projects. Preferred project: **Standalone Tool for Feature Usage Events Exploration**.
 
 ## How It Works
 
@@ -12,11 +12,32 @@ Instead of downloading a file sequentially, the downloader:
 4. Assembles the chunks in correct order into the final file
 
 ```
-Thread 1: [======    ] bytes 0–34
-Thread 2: [======    ] bytes 35–69    ← all running in parallel
-Thread 3: [======    ] bytes 70–104
-Thread 4: [======    ] bytes 105–141
+Thread 1: [======    ] bytes 0–1310719
+Thread 2: [======    ] bytes 1310720–2621439    ← all running in parallel
+Thread 3: [======    ] bytes 2621440–3932159
+Thread 4: [======    ] bytes 3932160–5242879
+...
 ```
+
+Chunks arrive **out of order** but are always assembled correctly:
+```
+Starting chunk 4: bytes 5242880-6553599
+Starting chunk 0: bytes 0-1310719             ← out of order = true parallelism
+Starting chunk 6: bytes 7864320-9175039
+Starting chunk 2: bytes 2621440-3932159
+[==============================>] 100% (8/8 chunks) ~10485760 bytes
+Download complete: output.bin
+```
+
+## Features
+
+- ✅ **Parallel downloading** — all chunks download simultaneously using Kotlin Coroutines
+- ✅ **Configurable chunk count** — specify how many chunks to split the file into
+- ✅ **Configurable chunk size** — specify chunk size in MB or KB instead of count
+- ✅ **Retry logic** — failed chunks are retried up to 3 times with a 1s delay
+- ✅ **Live progress bar** — real-time progress shown in terminal
+- ✅ **Binary file support** — works with any file type (text, images, zips, binaries)
+- ✅ **Correct assembly** — chunks always written in correct order regardless of arrival order
 
 ## Tech Stack
 
@@ -35,10 +56,10 @@ Thread 4: [======    ] bytes 105–141
 src/
  ├── main/kotlin/com/giopato/
  │    ├── HttpClient.kt     # Interface abstraction over HTTP
- │    ├── Downloader.kt     # Core parallel download logic
+ │    ├── Downloader.kt     # Core parallel download logic + retry + progress
  │    └── Main.kt           # CLI entry point + OkHttp implementation
  └── test/kotlin/com/giopato/
-      └── DownloaderTest.kt # 11 unit tests
+      └── DownloaderTest.kt # 13 unit tests
 ```
 
 ## Running the Downloader
@@ -56,40 +77,54 @@ docker run --rm -p 8080:80 -v /path/to/your/files:/usr/local/apache2/htdocs/ htt
 ### Run the downloader
 
 ```bash
-./gradlew run --args="<url> <outputFile> [chunkCount]"
+./gradlew run --args="<url> <outputFile> [chunkCount|chunkSize]"
 ```
 
-**Example:**
+**By chunk count:**
 ```bash
-./gradlew run --args="http://localhost:8080/testfile.txt output.txt 4"
+./gradlew run --args="http://localhost:8080/bigfile.bin output.bin 8"
+```
+
+**By chunk size in MB:**
+```bash
+./gradlew run --args="http://localhost:8080/bigfile.bin output.bin 2MB"
+```
+
+**By chunk size in KB:**
+```bash
+./gradlew run --args="http://localhost:8080/bigfile.bin output.bin 512KB"
 ```
 
 **Output:**
 ```
-Downloading: http://localhost:8080/testfile.txt
-Output:      /Users/giopato/output.txt
-Chunks:      4
-File size: 142 bytes — splitting into 4 chunks
-Downloading chunk 1: bytes 35-69
-Downloading chunk 3: bytes 105-141
-Downloading chunk 0: bytes 0-34
-Downloading chunk 2: bytes 70-104
-Chunk 0 complete (35 bytes)
-Chunk 3 complete (37 bytes)
-Chunk 2 complete (35 bytes)
-Chunk 1 complete (35 bytes)
-Download complete: /Users/giopato/output.txt
+Downloading: http://localhost:8080/bigfile.bin
+Output:      /Users/giopato/output.bin
+Chunk size:  2MB
+File size: 10485760 bytes — splitting into 5 chunks
+[==============================>] 100% (5/5 chunks) ~10485760 bytes
+Download complete: /Users/giopato/output.bin
 ```
-
-Notice chunks download **out of order** — proving true parallelism.
 
 ### Verify correctness
 
 ```bash
-diff /path/to/original/file output.txt
+diff /path/to/original/file output.bin
 ```
 
-No output = files are identical
+No output = files are identical ✅
+
+### Tested with a 10MB binary file
+
+```bash
+# Generate a 10MB test file
+dd if=/dev/urandom of=/path/to/server/bigfile.bin bs=1M count=10
+
+# Download it in parallel
+./gradlew run --args="http://localhost:8080/bigfile.bin output.bin 8"
+
+# Verify
+diff /path/to/server/bigfile.bin output.bin
+```
 
 ## Running Tests
 
@@ -98,7 +133,7 @@ No output = files are identical
 ```
 
 ```
-11 tests completed, 0 failed
+13 tests completed, 0 failed
 BUILD SUCCESSFUL
 ```
 
@@ -117,14 +152,23 @@ BUILD SUCCESSFUL
 | `download handles single chunk correctly` | Edge case: 1 chunk download |
 | `download throws when server does not support range requests` | Server error handling |
 | `download with MockWebServer returns correct content` | Real HTTP stack integration |
+| `download retries failed chunk and succeeds` | Retry logic on network failure |
+| `download with chunk size splits file correctly` | Configurable chunk size |
+| `download handles binary content correctly` | Binary file correctness |
 
 ## Design Decisions
 
-**Interface-based HttpClient** — The `HttpClient` interface decouples the download logic from the HTTP implementation. This makes the `Downloader` fully unit testable without real network calls — tests inject a `FakeHttpClient` instead.
+**Interface-based HttpClient** — The `HttpClient` interface decouples the download logic from the HTTP implementation. This makes the `Downloader` fully unit testable without real network calls — tests inject a `FakeHttpClient` instead of hitting a real server.
 
-**Kotlin Coroutines** — Using `async/awaitAll` with `Dispatchers.IO` gives clean, readable parallel code without manual thread management.
+**Kotlin Coroutines** — Using `async/awaitAll` with `Dispatchers.IO` gives clean, readable parallel code without manual thread management. Each chunk runs on its own coroutine.
 
-**Chunk assembly order** — Chunks are stored in a list indexed by position, so even if they arrive out of order they are always written to the file in the correct sequence.
+**Retry logic** — Each chunk is retried up to 3 times with a 1 second delay between attempts. Only the failing chunk is retried — other chunks are unaffected.
+
+**Mutex for progress bar** — A `Mutex` synchronizes progress bar printing across coroutines, preventing garbled output from concurrent writes to stdout.
+
+**Chunk assembly order** — Chunks are stored in a list indexed by position via `awaitAll()`, so even if they arrive out of order they are always written to the file in the correct sequence.
+
+**Configurable chunk size** — Users can specify either a chunk count (`4`) or a chunk size (`2MB`, `512KB`). The downloader calculates the appropriate number of chunks automatically.
 
 ## Author
 
